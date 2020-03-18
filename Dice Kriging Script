@@ -1,0 +1,252 @@
+#This is R code. Specifically, an R script, and meant to be used as such.
+
+
+#Since we're working with DiceKriging models in these functions, we'll need the DiceKriging package. 
+#We'll also need the tidyverse for multiple things, as well as stringr to deal with certain strings.
+
+library(DiceKriging)
+
+library(tidyverse)
+
+library(stringr)
+
+#Kriging statistical models are designed to simulate computer models using a limited number of data points;
+#in order to gather data points to train and test the statistical models, 
+#we need to program the computer models into R, which will let us generate training and testing data.
+
+zakharov_fn <- function(x, d){
+  #This is one of the five computer models used to test and train our function, the Zakharov function.
+  #This code is just a mathematical implementation of the Zakharov function.
+  index <- (1:d) * 0.5
+  y <- sum(x^2) + (sum(index * x)^2) + sum(index * x)^4
+  #This code is meant to be used with apply() type functions, so it takes a single x vector and a number of variables d, and outputs a single y.
+  y
+}
+
+rastrigin_fn <- function(x,d){
+  #This is the second computer model, the Rastrigin function.
+  #Everything written above applies here.
+  y <- 10*d + sum(x^2 - (10 * cos(2 * pi * x)))
+  y
+}
+
+dixon_price_fn <- function(x,d){
+  #This is the third computer model, the Dixon-Price function.
+  #Everything written above applies here.
+  index <- 2:d
+  y_vec <- (x[1] - 1)^2 + sum(index * (2*(x[2:d]^2) - x[1:(d-1)])^2)
+  y_vec
+}   
+
+styb_tang_fn <- function(x, d){
+  #This is the fourth computer model, the Styblinski-Tang function.
+  #Everything written above applies here.
+  y <- 0.5*sum((x^4) - (16*(x^2)) + (5*x))
+  y
+}
+
+mich_fn <- function(x, d, m = 10){
+  #This is the fifth computer model, the Michalewicz function.
+  #Everything written above applies here.
+  #It has a third argument m which is usually set to 10, so that is the default argument.
+  index <- 1:d
+  y <- -1*(sum(sin(x)*(sin((index * x^2)/pi)^(2*m))))
+  y
+}
+
+
+
+#Our dice_krig_fn creates a large number of Kriging models using the given sample size(s) and number(s) of variables, then generates MSEs for the models using testing data.
+#Since Kriging models use slightly random methods to optimize parameters, a seed argument is given as well.
+
+#To programmatically add in more functions: I need to alter fun_vec, make more training and testing y lists, and possibly do something about p_inc and d_inc.
+
+#To programmatically add in more covariance kernels, I needed to: alter cov_vec, possibly do something about covariance lengths with p_inc if what I did didn't work?
+
+dice_krig_fn <- function(samp_size, n_vars, seed){
+  #First, we set the seed as requested; next, since our function wants to test sample sizes times the number of variables, we multiply our sample size by our number of variables.
+  samp_size <- samp_size * n_vars
+  set.seed(seed)
+  #These vectors will be used to alternate between the parameters we're investigating - covariance kernels and usage of a nugget effect - in for loops, and to name list items.
+  cov_vec <- c("powexp", "gauss", "matern5_2", "exp", "matern3_2")
+  nug_vec <- c(TRUE, FALSE)
+  fun_vec <- c("zak", "rast", "dix", "styb", "mich")
+  #Since the lengths of these vectors will be used in for loops, we save them for easy access.
+  samp_len <- length(samp_size)
+  cov_len = length(cov_vec)
+  nug_len = length(nug_vec)
+  fun_len = length(fun_vec)
+  cov_len_2 <- 2*cov_len
+  #A series of empty lists and vectors, which will be used in the function.
+  training_x_list <- list(0)
+  testing_x_list <- list(0)
+  model_list <- list(0)
+  model_names <- character(0)
+  predictions_list <- list(0)
+  difference_list <- list(0)
+  nug_hold_vec <- numeric(0)
+  #Our y lists will have a separate list for each model, so we name that right away.
+  training_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
+  testing_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
+  for (a in 1:samp_len){
+    #For each sample size, we want a list item for our training and testing lists, so we iterate through using samp_len as our endpoint.
+    #We use a Random Latin Hypercube design for our x, since it's random and also space-filling. 
+    #That means our function should get a rough understanding of how our x variables interact with our response across the entire spectrum of possible points.
+    training_x_list[[a]] <- replicate(n_vars, sample(1:samp_size[a], samp_size[a]) / samp_size[a]) %>% as.data.frame()
+    testing_x_list[[a]] <- replicate(n_vars, sample(1:samp_size[a], samp_size[a]) / samp_size[a]) %>% as.data.frame()
+    #The replicate function performs a given action (in this case sampling) a given number of times (n_vars),
+    #and then binds the vectors created this way into a matrix (which is then made into a data frame by as.data.frame().
+  }
+  
+  #To make the data structure easier to understand, the names of the list items are their sample size.
+  names(training_x_list) <- paste0(as.character(samp_size / n_vars), "d")
+  names(testing_x_list) <- paste0(as.character(samp_size / n_vars), "d")
+  #A few key variables, which will be used in the function to supplement for loops.
+  model_count <- 1
+  predict_count <- 1
+  
+  #Next, we populate our training and testing y lists using the three different functions and three different sample sizes.
+  #lapply takes care of the three different samples, and apply is used to work through each matrix.
+  
+  training_y_list[[1]] <- lapply(training_x_list, function(x) apply(x, 1, zakharov_fn, n_vars))
+  testing_y_list[[1]] <- lapply(testing_x_list, function(x) apply(x, 1, zakharov_fn, n_vars))
+  training_y_list[[2]] <- lapply(training_x_list, function(x) apply(x, 1, rastrigin_fn, n_vars))
+  testing_y_list[[2]] <- lapply(testing_x_list, function(x) apply(x, 1, rastrigin_fn, n_vars))
+  training_y_list[[3]] <- lapply(training_x_list, function(x) apply(x, 1, dixon_price_fn, n_vars))
+  testing_y_list[[3]] <- lapply(testing_x_list, function(x) apply(x, 1, dixon_price_fn, n_vars))
+  training_y_list[[4]] <- lapply(training_x_list, function(x) apply(x, 1, styb_tang_fn, n_vars))
+  testing_y_list[[4]] <- lapply(testing_x_list, function(x) apply(x, 1, styb_tang_fn, n_vars))
+  training_y_list[[5]] <- lapply(training_x_list, function(x) apply(x, 1, mich_fn, n_vars))
+  testing_y_list[[5]] <- lapply(testing_x_list, function(x) apply(x, 1, mich_fn, n_vars))
+  
+  #Again, we give the list items the names of the sample sizes they were born from, to make the data structure easier to understand.
+  
+  for (b in 1:samp_len){
+    names(training_y_list[[b]]) <- paste0(as.character(samp_size / n_vars), "d")
+    names(testing_y_list[[b]]) <- paste0(as.character(samp_size / n_vars), "d")
+  }
+  
+  #The current structure of our data: training_x_list and testing_x_list
+  #hold three matrices; one with 5*n_var rows (5d), one with 10*n_var rows (10d), and one with 15*n_var rows (15d). All matrices have n_var columns.
+  
+  #Training_y_list and testing_y_list both hold three lists, each containing three matrices. The first list holds matrices for zakharov;
+  #The second for rastrigin, and the third for dixon_price. Each list then has three vectors; one with 5*n_var entries (5d), one with 10*n_var entries (10d),
+  #and one with 15*n_var entries (15d).
+  
+  #Loop in order:
+  for (c in 1:fun_len){
+    #This level is for data-generating functions. The y list has a list item for every function, and we want to access each one in sequence.
+    for (d in 1:samp_len){
+      #This level is for sample sizes. Each y list item has a matrix for every sample size, and the x list does as well, and we want to access each one in sequence.
+      for (e in 1:cov_len){
+        #This level is for covariance kernels, a parameter of Kriging models this function is meant to test. 
+        for (s in 1:nug_len){
+          #This level is for the nugget effect, another parameter of Kriging models this function is meant to test. Earlier, we created an object holding our desired nugget options;
+          #Here, we create Kriging models using a simple Kriging formula and the appropriate sample, response, covariance kernel, and nugget estimation / lack thereof. 
+          #Also, the control argument is invoked, since otherwise the km() formula would output to console everything it does.
+          model_list[[model_count]] <- km(formula = ~ 1, design = training_x_list[[d]], response = training_y_list[[c]][[d]],
+                                          covtype = cov_vec[e], nugget.estim = nug_vec[s], control = list(trace = FALSE))
+          #In order to keep saving each new model to a new list item in the same overall list object, we use an outside count variable, model_count, which eventually increments itself.
+          #We also set the names of our list items according to key parameters, in order to make data structure easier to understand.
+          model_names[model_count] <- paste(fun_vec[c], names(training_x_list[d]), cov_vec[e], as.character(nug_vec[s]), sep = "_")
+          #In order to save the nugget effect, we need to check if it was used (estim = TRUE) or not;
+          #if yes, we save it to the vector using s4 methods (the @ sign), and if not we insert an NA.
+          if (nug_vec[s] == TRUE){
+            #I'm currently standardizing by the mean of the Y data, which hopefully the mean of a matrix means a thing.
+            nug_hold_vec[model_count] <- model_list[[model_count]]@covariance@nugget / mean(training_y_list[[c]][[d]])
+          }
+          else{
+            nug_hold_vec[model_count] <- NA 
+          }
+          model_count = model_count + 1
+        }
+      }
+    }
+    names(model_list) <- model_names
+  }   
+  
+  #Next, we need to apply the predict function to our models, in order to generate predictions to test in order to generate MSEs and MAEs. 
+  #Since we're using lapply, we really only need to do this once for each sample size, so 1:samp_len is sufficient.
+  
+  for (f in 1:samp_len){
+    #Our predictions need to use testing data with the same sample size as the data which created each model;
+    #in our data, models using different sample sizes are spread out in clusters of covariance length times 2, so we want to hit each relevant cluster each time. Thus, a workaround.
+    p_inc = cov_len_2 * (f-1)
+    p_inc_vec <- c((1 + p_inc):(cov_len_2 + p_inc), ((samp_len * cov_len_2) + 1 + p_inc):(((samp_len + 1) * cov_len_2) + p_inc),
+    ((samp_len * cov_len_2 * 2) + 1 + p_inc):((((samp_len * 2) + 1) * cov_len_2) + p_inc),
+    ((samp_len * cov_len_2 * 3) + 1 + p_inc):((((samp_len * 3) + 1) * cov_len_2) + p_inc),
+    ((samp_len * cov_len_2 * 4) + 1 + p_inc):((((samp_len * 4) + 1) * cov_len_2) + p_inc)
+    )
+  
+    #This vector should allow us to access each series of clusters in sequence.
+    #Here, we lapply the predict function to each of the model_list items, using the Simple Kriging method of prediction (type = "SK"), which assumes no betas.
+    #This gives us predicted values for each model, using test data for which we have actual values.
+    predictions_list[[f]] <- lapply(model_list[p_inc_vec],
+                                    function(x) predict(x, newdata = testing_x_list[[f]], type = "SK"))
+  }
+
+  #Now we have three list items; the items they hold maintain their names, but the top-level three don't, so for clarity of data structure, we name them accordingly.
+  names(predictions_list) <- paste0(as.character(samp_size / n_vars), "d")
+  #Loop in order:
+  for (k in 1:fun_len){
+    #This level is for data-generating functions. The y list has a list item for every function, and we want to access each one in sequence. We have three, so 1:3.
+    d_inc <- (k - 1) * cov_len_2
+    #Also, all three prediction list items have predictions based on different functions in clusters of covariance length times 2, so we need to find a way to access only those six and none else.
+    for (g in 1:samp_len){
+      #This level is for sample sizes. The predictions list has three lists, one for each sample size,
+      #and the y list has three list items nested into its top-level function list items, one for each sample size. So 1:3.
+      for (h in 1:cov_len_2){
+        #This level is for iterating through our predictions and testing data, since we have clusters of six for each sample size and function.
+        #Here, we subtract the y values from the predicted y values, and save the resulting vector to a list, to be used later.
+        difference_list[[predict_count]] <- predictions_list[[g]][[h + d_inc]]$mean - testing_y_list[[k]][[g]]
+        #Similar to before, we use a count variable to save each vector to the list in sequence, which we later increment.
+        predict_count = predict_count + 1
+      }
+    }
+  }
+  #Since our differences actually correspond to our models, for clarity of structure, we can name our differences list with our model names.
+  names(difference_list) <- model_names
+  #From here, we can use our differences to generate Mean Square Errors and Mean Absolute Errors,
+  #using lapply() for easy application of the math and unlist() to get back something easier to work with.
+  mse_vec <- unlist(lapply(difference_list, function(x) mean(x^2)))
+  mae_vec <- unlist(lapply(difference_list, function(x) mean(abs(x))))
+  #Lastly, we want to gather all of our information into a tibble, so we can easily plot our results with ggplot2 and the tidyverse.
+  #We want a names column which we can separate to easily filter the dataset, but the underscores in 5_2  and 3_2 make this difficult, so we replace them with str_replace.
+  model_names <- str_replace(model_names, "5_2", "52")
+  model_names <- str_replace(model_names, "3_2", "32")
+
+  dice_kriging_tibble <- tibble(names = str_replace(model_names, "5_2", "52"),
+                                mse = mse_vec,
+                                mae = mae_vec,
+                                nugget = nug_hold_vec
+  )
+  #In order to easily filter our tibble with filter(), we separate its names column with separate() into four different columns. 
+  dice_kriging_tibble <- separate(dice_kriging_tibble, names, sep = "_", into = c("function", "samp_size", "cov_kernel", "nugget_eff"))
+  #Finally, we return our tibble.
+  return(dice_kriging_tibble)
+}
+
+#A sample function call, which is used to test the function:
+#dice_krig_fn(c(5,10,15), 5, 1500)
+
+#This function is for generating many runs of our dice_kriging function (primarily for plotting).
+#So it accepts a number of runs, and an initial random seed, as well as a sample size and a number of variables for the runs.
+multi_dice_krig_fn <- function(n_runs, seed, samp_size, n_vars){
+  #First we set our seed and create an empty tibble, which will eventually hold our results. We then use that seed to create a vector of random seeds.
+  set.seed(seed)
+  dicekrig_fn_tibble <- tibble()
+  sample_index <- sample(1:seed, n_runs)
+  #Each run of this for loop is a run of our function, so it runs from 1 to the number of runs.
+  for (i in 1:n_runs){
+    #We run our function using our given arguments, varying the random seed using our vector of random seeds,
+    #and then iteratively store the results in our tibble.
+    dicekrig_fn_holder <- dice_krig_fn(samp_size, n_vars, sample_index[i])
+    dicekrig_fn_tibble <- as_tibble(rbind(dicekrig_fn_holder, dicekrig_fn_tibble))
+    #Since this function runs for a while at high n_runs, a print statement is included out of mercy.
+    #However, it is commented out; uncomment it if you like.
+    #print(i)
+  }
+  #At the end, we return our tibble.
+  return(dicekrig_fn_tibble)
+}  
+    
