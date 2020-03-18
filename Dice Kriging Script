@@ -13,6 +13,8 @@ library(stringr)
 #in order to gather data points to train and test the statistical models, 
 #we need to program the computer models into R, which will let us generate training and testing data.
 
+#Functions found at this link: https://www.sfu.ca/~ssurjano/optimization.html
+
 zakharov_fn <- function(x, d){
   #This is one of the five computer models used to test and train our function, the Zakharov function.
   #This code is just a mathematical implementation of the Zakharov function.
