@@ -1,11 +1,5 @@
 #This is R code. Specifically, an R script, and meant to be used as such.
 
-```{r}
-
-#This is just here so Github realises this is R script!
-
-```
-
 #Since we're working with DiceKriging models in these functions, we'll need the DiceKriging package. 
 #We'll also need the tidyverse for multiple things, as well as stringr to deal with certain strings.
 
