@@ -62,9 +62,7 @@ stocks = stocks.drop(
 #We also didn't need anything except the date and closing price columns.
 #So we get rid of all that, and reset the index.
 
-dow_jones = dow_jones.iloc[1:85,0:2]
-
-dow_jones = dow_jones.reset_index(drop = True)
+dow_jones = dow_jones.iloc[1:85,0:2].reset_index(drop = True)
 
 #We also give more appropriate names,
 #to differentiate dow jones data from stock data for later.
@@ -76,12 +74,8 @@ dow_jones.columns = ["Dow_Date", "Dow_Price"]
 #so we get rid of the commas using regular expressions and then convert every price into a float.
 
 dow_jones["Dow_Price"] = list(
-    map(lambda x: re.sub(r',','', x),
+    map(lambda x: float(re.sub(r',','', x)),
         dow_jones["Dow_Price"]))
-
-dow_jones["Dow_Price"] = list(map(
-    lambda x: float(x),
-    dow_jones["Dow_Price"]))
 
 #Next, we want to order our dow jones data by date in ascending order - currently it's in descending order.
 #This means we need to reverse the order; to do this we can sort by index.
@@ -92,14 +86,9 @@ dow_jones = dow_jones.sort_index(ascending = False).reset_index(drop = True)
 
 #Our shining moment: we concatenate our dow_jones and stocks data,
 # giving us our stock and stock index data in one dataset.
-
-stock_data = pd.concat(
-    [dow_jones, stocks], axis = 1)
-
 #We don't need two date columns, so we drop one - in this case the Dow's.
 
-stock_data = stock_data.drop(
-    columns = "Dow_Date")
+stock_data = pd.concat([dow_jones, stocks], axis = 1).drop(columns = "Dow_Date")
 
 #Slide 7: Data Cleaning: Turning Stock Returns into Adjusted Returns.
 
@@ -108,14 +97,12 @@ stock_data = stock_data.drop(
 
 stock_date = list(stock_data["Date"])
 
-stock_returns = stock_data.drop(
-    columns = "Date")
+stock_returns = stock_data.drop(columns = "Date")
 
 stock_returns_adj = (
-    stock_returns.iloc[1:stock_returns.shape[0]]
-    .reset_index() - stock_returns.iloc
-    [0:(stock_returns.shape[0] - 1)]
-    .reset_index()) / stock_returns.iloc[0:(stock_returns.shape[0] - 1)].reset_index()
+    stock_returns.iloc[1:stock_returns.shape[0]].reset_index() - stock_returns.iloc
+    [0:(stock_returns.shape[0] - 1)].reset_index()) / stock_returns.iloc[
+        0:(stock_returns.shape[0] - 1)].reset_index()
 
 #From here, we create adjusted returns. 
 #Basically, an adjusted return is this day's returns minus the last day's returns,
@@ -150,8 +137,7 @@ stock_returns_adj = stock_returns_adj.drop(
 #which we originally split off into two separate objects.
 
 stock_data_adj = pd.concat(
-    [pd.DataFrame(
-        stock_date, columns = ["date"])
+    [pd.DataFrame(stock_date, columns = ["date"])
         ,stock_returns_adj], axis = 1)
 
 #Slide 7: Data Cleaning: Reformatting Case Dates.
@@ -165,16 +151,10 @@ stock_data_adj = pd.concat(
 cases_dates = cases['date']
 
 #From here, we want to convert our timestamp datatype into a datetime datatype,
-#which we can do with a lambda expression and map()
+#And then extract the information we want in the order we want.
 
 cases_dates = list(map(
-    lambda x: x.to_pydatetime(), cases_dates))
-
-#From there, we can extract the information we want in the order we want.
-
-cases_dates = list(map(
-    lambda x: x.strftime("%m/%d/%Y"),
-    cases_dates))
+    lambda x: x.to_pydatetime().strftime("%m/%d/%Y"), cases_dates))
 
 #But we're not out of the woods yet! Our years, months, and days are still formatted differently.
 
@@ -204,8 +184,6 @@ cases['date'] = cases_dates
 #To simplify certain mathematical operations, we replace the NANs created with zeroes in the relevant columns.
 
 cases_lag_1 = cases.shift(1)
-
-cases_lag_1.columns
 
 cases_lag_2 = cases.shift(2)
 
