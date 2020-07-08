@@ -1,0 +1,281 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Jun 29 16:17:31 2020
+
+@author: yaboody
+"""
+
+import pandas as pd
+
+import numpy as np
+
+import re
+
+#All of my imports! Pandas lets us work with dataframes,
+#Numpy gives us access to a few useful vectorized functions,
+#and re gives us access to regular expressions for data cleaning,
+
+#Slide 7: Data Acquisition:
+
+#Here we read in all of the CSVs (and an xlsx).    
+
+dow_jones = pd.read_csv("dow_jones.csv")
+
+stocks_p1 = pd.read_csv("stocks_p1.csv")
+
+stocks_p2 = pd.read_csv("stocks_p2.csv")
+
+cases = pd.read_excel(
+    "confirmed_cases_covid_19.xlsx")
+
+#The xslx doesn't have the same names as the one on the website did,
+#But we can just manually overwrite them by using those on the website.
+
+cases.columns = ["location","date",
+                 "total_cases",	"cases", 
+                 "total_deaths", 
+                 "new_deaths", 
+                 "total_cases_per_million",	
+                 "cases_per_million" ,	
+                 'total_deaths_per_million',
+                 'new_deaths_per_million']
+
+#Slide 7: Data Cleaning: Stock Datasets.
+
+#First, we want to combine our two stock datasets row-wise.
+
+#We're not interested in maintaining the index column, and both have
+#an unnamed column that also seems to be an index column, so we drop both.
+
+stocks = pd.concat(
+    [stocks_p1, stocks_p2]).reset_index(drop = True)
+
+stocks = stocks.drop(
+    columns = ["Unnamed: 0"])
+
+#Slide 7: Data Cleaning: Combining Stock Dataset and Dow Dataset.
+
+#First, we drop rows and columns from the dow jones dataset.
+
+#Our project studied dates up until May 1st,
+#so we didn't need the first row, dated may 04.
+#We also didn't need anything except the date and closing price columns.
+#So we get rid of all that, and reset the index.
+
+dow_jones = dow_jones.iloc[1:85,0:2]
+
+dow_jones = dow_jones.reset_index(drop = True)
+
+#We also give more appropriate names,
+#to differentiate dow jones data from stock data for later.
+
+dow_jones.columns = ["Dow_Date", "Dow_Price"]
+
+#Unfortunately, our prices contain commas, so Python sees them as strings rather than floats.
+#We need them to be floats for later mathematical operations,
+#so we get rid of the commas using regular expressions and then convert every price into a float.
+
+dow_jones["Dow_Price"] = list(
+    map(lambda x: re.sub(r',','', x),
+        dow_jones["Dow_Price"]))
+
+dow_jones["Dow_Price"] = list(map(
+    lambda x: float(x),
+    dow_jones["Dow_Price"]))
+
+#Next, we want to order our dow jones data by date in ascending order - currently it's in descending order.
+#This means we need to reverse the order; to do this we can sort by index.
+#After this, we reset the index in order to concatenate dow_jones and stocks. 
+#We don't need the old index as a column, so we drop it.
+
+dow_jones = dow_jones.sort_index(ascending = False).reset_index(drop = True)
+
+#Our shining moment: we concatenate our dow_jones and stocks data,
+# giving us our stock and stock index data in one dataset.
+
+stock_data = pd.concat(
+    [dow_jones, stocks], axis = 1)
+
+#We don't need two date columns, so we drop one - in this case the Dow's.
+
+stock_data = stock_data.drop(
+    columns = "Dow_Date")
+
+#Slide 7: Data Cleaning: Turning Stock Returns into Adjusted Returns.
+
+#We now want to turn our closing prices into adjusted returns. 
+#First, we split the dataset into date and prices (everything but the date, at this point).
+
+stock_date = list(stock_data["Date"])
+
+stock_returns = stock_data.drop(
+    columns = "Date")
+
+stock_returns_adj = (
+    stock_returns.iloc[1:stock_returns.shape[0]]
+    .reset_index() - stock_returns.iloc
+    [0:(stock_returns.shape[0] - 1)]
+    .reset_index()) / stock_returns.iloc[0:(stock_returns.shape[0] - 1)].reset_index()
+
+#From here, we create adjusted returns. 
+#Basically, an adjusted return is this day's returns minus the last day's returns,
+#divided by the last day's returns. 
+
+#In other words, if you bought a stock yesterday at 100 dollars,
+#and today you sold it at 150 dollars, then you made (150-100 = 50) dollars.
+#Furthermore, if you made 50 dollars with an investment of 100,
+#then you got a (50 / 100 = 0.5 = 50%) return on your investment. 
+
+#In Python, this means you remove the first row of the dataset
+#- meaning, the second row is now the first
+#-and subtract the original dataset with the last row removed,
+# which subtracts the first row from the second, the second row from the third etc. 
+#Then you divided by the original dataset with the last row removed.
+# This all works wonderfully, but there is one slight downside:
+
+stock_date = stock_date[1:len(stock_date)]
+
+#When using this method, the first row is lost. 
+#This makes some sense - there's no rate of change measurable in this case.
+#Since it's now gone, we need to remove the first day of our date as well.
+
+stock_returns_adj = stock_returns_adj.drop(
+    columns = "index")
+
+#We also want to drop the index column from stock_returns_adj;
+#in this case, since we did a big mathematical operation to create it,
+#it's simpler to drop the index at the end.
+
+#Finally, we can de-split the dataset! Basically, just concetenating the date and the adjusted returns,
+#which we originally split off into two separate objects.
+
+stock_data_adj = pd.concat(
+    [pd.DataFrame(
+        stock_date, columns = ["date"])
+        ,stock_returns_adj], axis = 1)
+
+#Slide 7: Data Cleaning: Reformatting Case Dates.
+
+#OK, time to clean the cases dataset. We want to combine this with our stock dataset.
+#Joining on date seems like the best way to do this,
+#but the dates from these two datasets are formatted very differently.
+
+#First, we extract the date column so we can start working on it.
+
+cases_dates = cases['date']
+
+#From here, we want to convert our timestamp datatype into a datetime datatype,
+#which we can do with a lambda expression and map()
+
+cases_dates = list(map(
+    lambda x: x.to_pydatetime(), cases_dates))
+
+#From there, we can extract the information we want in the order we want.
+
+cases_dates = list(map(
+    lambda x: x.strftime("%m/%d/%Y"),
+    cases_dates))
+
+#But we're not out of the woods yet! Our years, months, and days are still formatted differently.
+
+#For the years, we have "2020" instead of "20". Since we're just working with 2020 in both cases, it's an easy fix:
+
+cases_dates = list(map(
+    lambda x: re.sub(r'2020', '20', x),
+    cases_dates))
+
+#For the months and days, we have "05" versus "5". So we need to remove the leading zeroes.
+#But we can't just remove every zero! 
+#Luckily, we just need to remove zeroes if a digit directly follows the zero.
+#So we do that!
+         
+cases_dates = list(map(
+    lambda x: re.sub(r'0(\d)', '\\1', x),
+    cases_dates))
+
+#Now that we've done all this work to make a new date column out of the old one,
+#all that's left to do is to replace the old one. Which we do!
+
+cases['date'] = cases_dates
+
+#Slide 8: Data Engineering: Case Variables Lag.
+
+#This is just creating lagged versions of the case variables.
+#To simplify certain mathematical operations, we replace the NANs created with zeroes in the relevant columns.
+
+cases_lag_1 = cases.shift(1)
+
+cases_lag_1.columns
+
+cases_lag_2 = cases.shift(2)
+
+cases_lag_1.iloc[0, 2:10] = [0,0,0,0,0,0,0,0]
+
+cases_lag_2.iloc[0, 2:10] = [0,0,0,0,0,0,0,0]
+
+cases_lag_2.iloc[1, 2:10] = [0,0,0,0,0,0,0,0]
+
+#We then give proper names to our new columns, to differentiate them from the originals.
+
+cases_lag_1.columns = cases.columns + "_lag_1"
+
+cases_lag_2.columns = cases.columns + "_lag_2"
+
+#We can now combine everything into a case dataset containing our original and lagged data.
+
+full_cases = pd.concat(
+    [cases, cases_lag_1, cases_lag_2]
+    , axis = 1)
+
+#This now lets us combine our case data and our stock data, outer joining on date.
+#This means that NAN rows will be produced for the stock data for every date that lacks stock return data.
+
+case_stock_data = pd.merge(
+    full_cases, stock_data_adj,
+    how = "outer", on = "date"
+    )
+
+#But, wait a minute. Why do we have missing dates, anyways...?
+
+#Slide 8: Data Engineering: Weekend and Holiday Aggregation.
+
+#Fun fact: stock returns are not generated on weekends and holidays, because the stock exchanges are closed on those days!
+
+#Well, we need to do something about that. 
+#Specifically, we need to aggregate the case data from over the weekend.
+#In other words - on Tuesday people may react to Tuesday's cases. 
+#On Monday, they should react to Monday's cases, but also Sunday's and Saturday's.
+
+#For the lagged variable, this occurs with a lag:
+#Monday reacts to Sunday's cases, as well as Saturday's and Friday's, for a lag of one.
+#And Monday reacts to Saturday's cases, as well as Friday's and Thursday's, for a lag of two.
+
+#This assumes that this is how investors actually behave, but it makes sense.
+
+
+
+#Anyways, here we have a handmade list of variables which need to be aggregated.
+
+#These are all of the numeric variables which aren't cumulative and aren't stock prices.
+
+agg_vec = list(pd.Series([3,5,7,9,13,15,17,19,23,25,27,29]))
+
+#Basically, if the dow price is NAN for a given date,
+#the variables in that date's row are added to the corresponding variables in the next row.
+
+#This requires us to drop our last row, 
+#but luckily our last few rows are all outside of the scope of the project anyways.
+
+for i in range(case_stock_data.shape[0] - 1):
+    if np.isnan(case_stock_data["Dow_Price"][i]) == True:
+        case_stock_data.iloc[i + 1, agg_vec] = case_stock_data.iloc[i + 1, agg_vec] + case_stock_data.iloc[i, agg_vec]        
+
+#Here, we filter out rows that are NAN, using the fact that NAN != NAN to create a logical value mask.
+
+case_stock_mask = list(map(
+    lambda x: x == x,
+    case_stock_data["Dow_Price"]))
+
+#This mask can be indexed to give us the finalized form of our dataset.
+
+case_stock_data = case_stock_data.loc[case_stock_mask]
