@@ -1,0 +1,226 @@
+
+```{r}
+
+#Our libaries: tidyverse for tibbles, ggplot2 for plotting, glmnet for Ridge / LASSO, varhandle for the handy unfactor() function which will be explained and used later, and readxl to read xlsx data, i.e. our cases dataset.
+
+library(tidyverse)
+
+library(ggplot2)
+
+library(glmnet)
+
+library(varhandle)
+
+library(readxl)
+
+```
+
+#Slide 7: Data Acquisition:
+
+```{r}
+
+dow_jones <- read.csv("dow_jones.csv")
+
+stocks_p1 <- read.csv("stocks_p1.csv")
+
+stocks_p2 <- read.csv("stocks_p2.csv")
+
+cases <- read_xlsx("confirmed_cases_covid_19.xlsx")
+
+#Note: The errors below relate to the names of the variables in the cases dataset, which are fine on the website but don't exist here. We fix this by using the variable names from the website:
+
+names(cases) <-  c("location","date","total_cases",	"cases",	"total_deaths",	"new_deaths",	"total_cases_per_million",	"cases_per_million" ,	'total_deaths_per_million',	'new_deaths_per_million')
+
+```
+
+#Slide 7: Data Cleaning: Stock Datasets.
+
+```{r}
+
+#Here, we combine the two stock datasets into one:
+
+stocks_combined <- rbind(stocks_p1, stocks_p2)
+
+#These are formatted the same way, so we just need to rowbind them together.
+
+```
+
+#Slide 7: Data Cleaning: Combining Stock Dataset and Dow Dataset.
+
+```{r}
+
+#Here, we clean the Dow Jones Restauarants and Bars Stock Index data:
+
+dow_jones <- dow_jones[-1, c(1,2)]
+
+#We exclude the first row, because it's May 4th, and the rest of the rows only go up to may 1st. Also, we only need the first two columns, which are date and closing price.
+
+names(dow_jones) <- c("Dow_Date", "Dow_Price")
+
+#We change the names to be more accurate (and easy to differentiate) for our upcoming combination with the stocks dataset.
+
+dow_jones$Dow_Price <- as.numeric(str_replace_all((unfactor(dow_jones$Dow_Price)), ",", ""))
+
+#Because our price variable is a factor, we need to unfactor it - this is where the varhandle library comes in. Since our prices all contain commas, they will become strings, so we need to remove the commas and coerce the data into being numeric data - that way we can perform certain mathematical operations on the data later.
+
+dow_jones <- mutate(dow_jones, "index" = nrow(dow_jones):1)
+
+dow_jones <- arrange(dow_jones, index)
+
+#Next, we need to combine the dow jones dataset and the stocks dataset, but our dow jones dataset starts from the latest date (may 1st), whereas our stocks dataset starts from the earliest date. Worse, the two dates aren't formatted the same way. So, we just create a numeric index in reverse order and arrange the dataset, to create the same order in both datasets.
+
+stock_data <- cbind(dow_jones, stocks_combined)
+
+#Having done this, we column bind them together.
+
+select(stock_data, c(Dow_Date, Date))
+
+#From here, we see that the dates are now perfectly aligned.
+
+stock_data <- select(stock_data, -c(X, Dow_Date, index))
+
+#We don't really need either index anymore, or the extra date - so we keep the one that is easier for R to work with.
+
+```
+
+#Slide 7: Data Cleaning: Turning Stock Returns into Adjusted Returns.
+
+```{r}
+
+#Third, we need to turn the stock returns into adjusted returns, so we split the dataset into dates and returns.
+
+stock_date <- select(stock_data, Date)
+
+stock_returns <- select(stock_data, -c(Date))
+
+stock_adj_returns <- (stock_returns[-1,] - stock_returns[-nrow(stock_returns),]) / stock_returns[-nrow(stock_returns),]
+
+#From here, we adjust the returns. Basically, an adjusted return is this day's returns minus the last day's returns, divided by the last day's returns. 
+
+#In other words, if you bought a stock yesterday at 100 dollars, and today you sold it at 150 dollars, then you made (150-100 = 50) dollars. Furthermore, if you made 50 dollars with an investment of 100, then you got a (50 / 100 = 0.5 = 50%) return on your investment. 
+
+#In R code, this means you remove the first row of the dataset - meaning, the second row is now the first - and subtract the original dataset with the last row removed, which subtracts the first row from the second, the second row from the third etc. Then you divided by the original dataset with the last row removed. This all works wonderfully, but there is one slight downside:
+
+stock_date <- stock_date[-1,]
+
+#When using this method, the first row is lost. This makes some sense - there's no rate of change measurable in this case. Since it's now gone, we need to remove the first day of our date as well.
+
+stock_data_adj <- cbind(stock_date, stock_adj_returns)
+
+#Now we can reconnect the two.
+
+stock_data_adj <- unfactor(stock_data_adj)
+
+#We also unfactor our dataset, for later ease of use.
+
+```
+
+#Slide 7: Data Cleaning: Reformatting Case Dates.
+
+```{r}
+
+#Lastly, we clean the cases and deaths dataset for our purposes.
+
+cases <- data.frame(cases)
+
+#Firstly, we turn it into a data frame.
+
+cases_dates <- as.character(cases$date)
+
+#We we want to reformat the date column of the cases dataset, so we extract it, and convert it from its current datatype to a character datatype. Luckily, this doesn't cause any problems!
+
+cases_dates <- str_replace_all(cases_dates, "-", "/")
+
+#Now we can start using stringr functions to reformat our date column in order to combine the cases and (stocks + dow jones) datasets. This means the date numbers need to have slashes separating them instead of dashes, so we replace every dash with a slash.
+
+cases_dates <- str_replace_all(cases_dates, "2020/", "")
+
+#We also need the year to be at the end of the date, not the front. Since all of our data is in the same year, we can just get rid of it for now and add it back on later.
+
+for (i in 1:length(cases_dates)){
+  cases_dates[i] <- paste0(cases_dates[i], "/20")
+}
+
+#Using the paste0 function and a for loop, we can paste together each date we have now with the string "/20" with no spaces in between, which gives us a year at the end of our dates. 
+
+cases_dates <- str_replace_all(cases_dates, "0(\\d)", "\\1")
+
+#OK, this takes a bit of explaining. Our case dates have zeroes in front of digits; they're formatted like 01/02/20. Our stock dates don't: they're formatted like 1/2/20. To change one to the other, we want to find any zero followed by one digit, and then replace that with that same digit, which we do by establishing that digit as a group and then replacing it with that same group.
+
+cases$date <- cases_dates
+
+#Now that we have our dates, we replace the old dates with the new ones.
+
+cases <- unfactor(cases)
+
+#Next, we unfactor our cases dataset so we can perform operations on it.
+
+#From here, we're done with data cleaning, but before we combine the two datasets, we want to use our cases dataset for some data engineering.
+
+```
+
+#Slide 8: Data Engineering: Case Variables Lag.
+
+```{r}
+
+#We now want to apply a lag to our cases, so we can see how the market responds to cases from a day ago. That means we apply the lag function to every column of cases, store that into a data frame, and then unfactor the data frame so we can perform the next operation:
+
+cases_1_lag <- unfactor(data.frame(apply(cases, 2, lag)))
+
+#The lag operation inserts NAs into the first row, which is fine, but we're planning to add together some numbers and the first rows will participate in this, so it makes more sense to set them to zero.
+
+cases_1_lag[1, 3:10] <- c(0,0,0,0,0,0,0,0)
+
+#We now make new column names for our lagged variables by pasting "_lag_1" onto the existing names.
+
+names(cases_1_lag) <- paste0(names(cases_1_lag), "_lag_1")
+
+#We repeat the above process, but with a lag of 2, so we can see how the market responds to cases from 2 days ago.
+
+cases_2_lag <- unfactor(data.frame(apply(cases, 2, lag, 2)))
+
+cases_2_lag[1, 3:10] <- c(0,0,0,0,0,0,0,0)
+
+cases_2_lag[2, 3:10] <- c(0,0,0,0,0,0,0,0)
+
+#Once again, we set the NA rows to be zeroes.
+
+names(cases_2_lag) <- paste0(names(cases_2_lag), "_lag_2")
+
+#And once again, we set appropriate names by pasting "_lag2" onto the existing names.
+
+#We now combine our cases dataset and our two lagged cases datasets, and unfactor them all again just in case.
+
+full_cases <- unfactor(data.frame(cases, cases_1_lag, cases_2_lag))
+
+#Now that we've created the lagged variables, we can finally join together our two datasets; we join on the date and stock_date variables. Since this is a left join, any date present in our cases' dates but not in our stock data's dates will produce a row of NAs; this will tell us what dates to exclude in future operations, so it's fine.
+
+case_stock_data <- left_join(full_cases, stock_data_adj, by = c("date" = "stock_date"))
+
+```
+
+#Slide 8: Data Engineering: Weekend and Holiday Aggregation.
+
+```{r}
+
+#Our next goal is to aggregate case and death numbers which occurred over the weekend to the appropriate day. In other words, on Monday the stock market opens for the first time since Friday, and people react to the new number of cases on Monday, but also on Sunday and Saturday. If we assume that people react to yesterday's cases (i.e. if the lag_1 variables are significant), then on Monday they react to Sunday's cases, as well as Saturday's and Friday's. If they react to the day before yesterday's cases (lag_2 variables significant), then on Monday they react to Saturday's cases, as well as Friday's and Thursday's.
+
+#Here we have a vector I made by hand, which tells us which columns we want to aggregate. Notably, I'm excluding columns with total numbers because those are already cumulative, so no need to aggregate them; we also don't want to add up dates, locations, or stock price returns.
+
+agg_vec <- c(4,6,8,10,14,16,18,20,24,26,28,30)
+
+#We iterate from the first row until the second-to-last row; since we're adding the first row to the second row and so on, it'd be awkward to use the last row. Luckily the last row is five days ahead of everything else and we're not using it, so this doesn't cause any issues.
+
+for (i in 1:(nrow(case_stock_data) - 1)){
+  #Since we left-joined earlier, the stock prices have NAs in the right places. We use that to our advantage here.
+  if (is.na(case_stock_data$Dow_Price[i]) == TRUE){
+    #If there's an NA, then we add this row's values to the next row's values, doing this only for the variables we want to aggregate.
+    case_stock_data[i + 1, agg_vec] <- case_stock_data[i + 1, agg_vec] + case_stock_data[i,agg_vec]
+  }
+}
+
+#With all that done, we filter out all the rows for which Dow_Price is NA.
+
+case_stock_data <- filter(case_stock_data, is.na(Dow_Price) == FALSE)
+
+```
