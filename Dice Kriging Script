@@ -55,25 +55,19 @@ mich_fn <- function(x, d, m = 10){
   y
 }
 
-
-
 #Our dice_krig_fn creates a large number of Kriging models using the given sample size(s) and number(s) of variables, then generates MSEs for the models using testing data.
 #Since Kriging models use slightly random methods to optimize parameters, a seed argument is given as well.
 
-#To programmatically add in more functions: I need to alter fun_vec, make more training and testing y lists, and possibly do something about p_inc and d_inc.
-
-#To programmatically add in more covariance kernels, I needed to: alter cov_vec, possibly do something about covariance lengths with p_inc if what I did didn't work?
-
 dice_krig_fn <- function(samp_size, n_vars, seed){
   #First, we set the seed as requested; next, since our function wants to test sample sizes times the number of variables, we multiply our sample size by our number of variables.
-  samp_size <- samp_size * n_vars
+  samp_size_final <- samp_size * n_vars
   set.seed(seed)
   #These vectors will be used to alternate between the parameters we're investigating - covariance kernels and usage of a nugget effect - in for loops, and to name list items.
   cov_vec <- c("powexp", "gauss", "matern5_2", "exp", "matern3_2")
   nug_vec <- c(TRUE, FALSE)
   fun_vec <- c("zak", "rast", "dix", "styb", "mich")
   #Since the lengths of these vectors will be used in for loops, we save them for easy access.
-  samp_len <- length(samp_size)
+  samp_len <- length(samp_size_final)
   cov_len = length(cov_vec)
   nug_len = length(nug_vec)
   fun_len = length(fun_vec)
@@ -93,15 +87,15 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
     #For each sample size, we want a list item for our training and testing lists, so we iterate through using samp_len as our endpoint.
     #We use a Random Latin Hypercube design for our x, since it's random and also space-filling. 
     #That means our function should get a rough understanding of how our x variables interact with our response across the entire spectrum of possible points.
-    training_x_list[[a]] <- replicate(n_vars, sample(1:samp_size[a], samp_size[a]) / samp_size[a]) %>% as.data.frame()
-    testing_x_list[[a]] <- replicate(n_vars, sample(1:samp_size[a], samp_size[a]) / samp_size[a]) %>% as.data.frame()
+    training_x_list[[a]] <- replicate(n_vars, sample(1:samp_size_final[a], samp_size_final[a]) / samp_size_final[a]) %>% as.data.frame()
+    testing_x_list[[a]] <- replicate(n_vars, sample(1:samp_size_final[a], samp_size_final[a]) / samp_size_final[a]) %>% as.data.frame()
     #The replicate function performs a given action (in this case sampling) a given number of times (n_vars),
     #and then binds the vectors created this way into a matrix (which is then made into a data frame by as.data.frame().
   }
   
   #To make the data structure easier to understand, the names of the list items are their sample size.
-  names(training_x_list) <- paste0(as.character(samp_size / n_vars), "d")
-  names(testing_x_list) <- paste0(as.character(samp_size / n_vars), "d")
+  names(training_x_list) <- paste0(as.character(samp_size_final / n_vars), "d")
+  names(testing_x_list) <- paste0(as.character(samp_size_final / n_vars), "d")
   #A few key variables, which will be used in the function to supplement for loops.
   model_count <- 1
   predict_count <- 1
@@ -123,8 +117,8 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
   #Again, we give the list items the names of the sample sizes they were born from, to make the data structure easier to understand.
   
   for (b in 1:samp_len){
-    names(training_y_list[[b]]) <- paste0(as.character(samp_size / n_vars), "d")
-    names(testing_y_list[[b]]) <- paste0(as.character(samp_size / n_vars), "d")
+    names(training_y_list[[b]]) <- paste0(as.character(samp_size_final / n_vars), "d")
+    names(testing_y_list[[b]]) <- paste0(as.character(samp_size_final / n_vars), "d")
   }
   
   #The current structure of our data: training_x_list and testing_x_list
@@ -187,7 +181,7 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
   }
 
   #Now we have three list items; the items they hold maintain their names, but the top-level three don't, so for clarity of data structure, we name them accordingly.
-  names(predictions_list) <- paste0(as.character(samp_size / n_vars), "d")
+  names(predictions_list) <- paste0(as.character(samp_size_final / n_vars), "d")
   #Loop in order:
   for (k in 1:fun_len){
     #This level is for data-generating functions. The y list has a list item for every function, and we want to access each one in sequence. We have three, so 1:3.
