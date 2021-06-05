@@ -58,11 +58,15 @@ mich_fn <- function(x, d, m = 10){
 #Our dice_krig_fn creates a large number of Kriging models using the given sample size(s) and number(s) of variables, then generates MSEs for the models using testing data.
 #Since Kriging models use slightly random methods to optimize parameters, a seed argument is given as well.
 
+#This function is meant to be as programmatic as possible, so that anyone can use it to test different functions and parameters with only slight modifications. These modifications, if done, should be done in two places, marked (1) and (2).
+
 dice_krig_fn <- function(samp_size, n_vars, seed){
   #First, we set the seed as requested; next, since our function wants to test sample sizes times the number of variables, we multiply our sample size by our number of variables.
   samp_size_final <- samp_size * n_vars
   set.seed(seed)
   #These vectors will be used to alternate between the parameters we're investigating - covariance kernels and usage of a nugget effect - in for loops, and to name list items.
+  #(1): These three vectors will need to be modified to investigate different covariance kernels,  nugget effects, or functions (though fun_vec is only used for naming purposes).
+  #Alternatively, to investigate different parameters, make your own vectors. Doing this means you have to slightly modify the km() function call, and depending on what you're doing, you might need to write some code of your own.
   cov_vec <- c("powexp", "gauss", "matern5_2", "exp", "matern3_2")
   nug_vec <- c(TRUE, FALSE)
   fun_vec <- c("zak", "rast", "dix", "styb", "mich")
@@ -72,17 +76,20 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
   nug_len = length(nug_vec)
   fun_len = length(fun_vec)
   cov_len_2 <- 2*cov_len
-  #A series of empty lists and vectors, which will be used in the function.
-  training_x_list <- list(0)
-  testing_x_list <- list(0)
+  #A few empty lists and vectors for the function to populate.
   model_list <- list(0)
   model_names <- character(0)
   predictions_list <- list(0)
   difference_list <- list(0)
   nug_hold_vec <- numeric(0)
-  #Our y lists will have a separate list for each model, so we name that right away.
-  training_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
-  testing_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
+  #A few key variables, which will be used in the function to supplement for loops.
+  model_count <- 1
+  predict_count <- 1
+  
+  #Two empty lists, which will be filled out in the below for loop (and used later in the function).
+  training_x_list <- list(0)
+  testing_x_list <- list(0)
+
   for (a in 1:samp_len){
     #For each sample size, we want a list item for our training and testing lists, so we iterate through using samp_len as our endpoint.
     #We use a Random Latin Hypercube design for our x, since it's random and also space-filling. 
@@ -91,14 +98,17 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
     testing_x_list[[a]] <- replicate(n_vars, sample(1:samp_size_final[a], samp_size_final[a]) / samp_size_final[a]) %>% as.data.frame()
     #The replicate function performs a given action (in this case sampling) a given number of times (n_vars),
     #and then binds the vectors created this way into a matrix (which is then made into a data frame by as.data.frame().
-  }
-  
+  }  
+
   #To make the data structure easier to understand, the names of the list items are their sample size.
   names(training_x_list) <- paste0(as.character(samp_size_final / n_vars), "d")
   names(testing_x_list) <- paste0(as.character(samp_size_final / n_vars), "d")
-  #A few key variables, which will be used in the function to supplement for loops.
-  model_count <- 1
-  predict_count <- 1
+  
+  #Two (named) empty lists, which will be filled out in the code below (and used later in the function).
+  #(2): The below code will need to be modified to test different functions - the list will need to be resized / renamed, and then its entries will need to be changed by using different functions in the lapply() call. 
+
+  training_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
+  testing_y_list <- list(zakharov = list(0), rastrigin = list(0), dixon_price = list(0), styblinski_tang = list(0), michalewicz = list(0))
   
   #Next, we populate our training and testing y lists using the three different functions and three different sample sizes.
   #lapply takes care of the three different samples, and apply is used to work through each matrix.
@@ -114,19 +124,16 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
   training_y_list[[5]] <- lapply(training_x_list, function(x) apply(x, 1, mich_fn, n_vars))
   testing_y_list[[5]] <- lapply(testing_x_list, function(x) apply(x, 1, mich_fn, n_vars))
   
-  #Again, we give the list items the names of the sample sizes they were born from, to make the data structure easier to understand.
+  #Again, we give the list items the names of the sample sizes they were based on, to make the data structure easier to understand.
   
   for (b in 1:samp_len){
     names(training_y_list[[b]]) <- paste0(as.character(samp_size_final / n_vars), "d")
     names(testing_y_list[[b]]) <- paste0(as.character(samp_size_final / n_vars), "d")
   }
   
-  #The current structure of our data: training_x_list and testing_x_list
-  #hold three matrices; one with 5*n_var rows (5d), one with 10*n_var rows (10d), and one with 15*n_var rows (15d). All matrices have n_var columns.
+  #The current structure of our data: training_x_list and testing_x_list hold three matrices; one with 5*n_var rows (5d), one with 10*n_var rows (10d), and one with 15*n_var rows (15d). All matrices have n_var columns.
   
-  #Training_y_list and testing_y_list both hold three lists, each containing three matrices. The first list holds matrices for zakharov;
-  #The second for rastrigin, and the third for dixon_price. Each list then has three vectors; one with 5*n_var entries (5d), one with 10*n_var entries (10d),
-  #and one with 15*n_var entries (15d).
+  #Training_y_list and testing_y_list both hold three lists, each containing three matrices. The first list holds matrices for zakharov, the second for rastrigin, and the third for dixon_price. Each list then has three vectors; one with 5*n_var entries (5d), one with 10*n_var entries (10d), and one with 15*n_var entries (15d).
   
   #Loop in order:
   for (c in 1:fun_len){
@@ -148,6 +155,7 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
           #if yes, we save it to the vector using s4 methods (the @ sign), and if not we insert an NA.
           if (nug_vec[s] == TRUE){
             #I'm currently standardizing by the mean of the Y data, which hopefully the mean of a matrix means a thing.
+            #As the data varies widely in scale, we standardise the nugget effect by dividing it by the mean of the data.
             nug_hold_vec[model_count] <- model_list[[model_count]]@covariance@nugget / mean(training_y_list[[c]][[d]])
           }
           else{
