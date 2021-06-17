@@ -59,7 +59,7 @@ names(dow_jones) <- c("Dow_Date", "Dow_Price")
 
 #We change the names to be more accurate (and easy to differentiate) for our upcoming combination with the stocks dataset.
 
-dow_jones$Dow_Price <- as.numeric(str_replace_all((unfactor(dow_jones$Dow_Price)), ",", ""))
+dow_jones$Dow_Price <- as.numeric(str_replace_all(unfactor(dow_jones$Dow_Price), ",", ""))
 
 #Because our price variable is a factor, we need to unfactor it - this is where the varhandle library comes in. Since our prices all contain commas, they will become strings, so we need to remove the commas and coerce the data into being numeric data - that way we can perform certain mathematical operations on the data later.
 
