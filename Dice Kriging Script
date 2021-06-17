@@ -58,8 +58,9 @@ mich_fn <- function(x, d, m = 10){
 #Our dice_krig_fn creates a large number of Kriging models using the given sample size(s) and number(s) of variables, then generates MSEs for the models using testing data.
 #Since Kriging models use slightly random methods to optimize parameters, a seed argument is given as well.
 
-#This function is meant to be as programmatic as possible, so that anyone can use it to test different functions and parameters with only slight modifications. These modifications, if done, should be done in two places, marked (1) and (2).
-
+#This function is meant to be as programmatic as possible, so that anyone can use it to test different functions and parameters with only slight modifications.
+#These modifications, if done, should be done in three places, marked (1), (2), and (3).
+ 
 dice_krig_fn <- function(samp_size, n_vars, seed){
   #First, we set the seed as requested; next, since our function wants to test sample sizes times the number of variables, we multiply our sample size by our number of variables.
   samp_size_final <- samp_size * n_vars
@@ -135,6 +136,8 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
   
   #Training_y_list and testing_y_list both hold three lists, each containing three matrices. The first list holds matrices for zakharov, the second for rastrigin, and the third for dixon_price. Each list then has three vectors; one with 5*n_var entries (5d), one with 10*n_var entries (10d), and one with 15*n_var entries (15d).
   
+  #(3): This loop tests given parameters, so if you want to use different parameters, you need to change it.
+  
   #Loop in order:
   for (c in 1:fun_len){
     #This level is for data-generating functions. The y list has a list item for every function, and we want to access each one in sequence.
@@ -154,7 +157,6 @@ dice_krig_fn <- function(samp_size, n_vars, seed){
           #In order to save the nugget effect, we need to check if it was used (estim = TRUE) or not;
           #if yes, we save it to the vector using s4 methods (the @ sign), and if not we insert an NA.
           if (nug_vec[s] == TRUE){
-            #I'm currently standardizing by the mean of the Y data, which hopefully the mean of a matrix means a thing.
             #As the data varies widely in scale, we standardise the nugget effect by dividing it by the mean of the data.
             nug_hold_vec[model_count] <- model_list[[model_count]]@covariance@nugget / mean(training_y_list[[c]][[d]])
           }
